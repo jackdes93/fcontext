@@ -1,4 +1,4 @@
-module github.com/jackdes93/f-context
+module github.com/jackdes93/fcontext
 
 go 1.23.1
 
