@@ -1,0 +1,15 @@
+# sctx — Service Context Library
+
+Thư viện Go tối giản để quản lý lifecycle theo component:
+- `Component` có `InitFlags()`, `Activate()`, `Stop()`, `Order()`
+- Rollback nếu Activate lỗi, Stop gom lỗi
+- Logger mặc định: zerolog (console friendly)
+- Hỗ trợ `--env-file` và `.env`
+- `Run()` helper bắt SIGINT/SIGTERM
+- `GetAs[T]` typed getter
+
+## Cài đặt
+
+```bash
+go get github.com/jackdes93/f-context
+
