@@ -35,7 +35,7 @@ type serviceCtx struct {
 	envFile    string
 	components []Component
 	store      map[string]Component
-	cmdLine    *AppFlatSet
+	cmdLine    *AppFlagSet
 	logger     Logger
 }
 
@@ -48,7 +48,7 @@ func New(opts ...Option) ServiceContext {
 		opt(sv)
 	}
 	sv.initFlags()
-	sv.cmdLine = newFlagSet(sv.name, flag.CommandLine)
+	sv.cmdLine = NewFlagSet(sv.name, nil, "")
 	sv.parseFlags()
 
 	if sv.logger == nil {
