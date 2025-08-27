@@ -3,6 +3,7 @@ package fcontext
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -21,13 +22,21 @@ type ZeroLogger struct {
 	logger zerolog.Logger
 }
 
-func newZeroLogger(prefix string) *ZeroLogger {
-	w := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339Nano}
-	z := log.Output(w)
-	if prefix != "" {
-		z = z.With().Str("service", prefix).Logger()
+func newZeroLogger(prefix, env string) *ZeroLogger {
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+	switch strings.ToLower(env) {
+	case "production", "prod", "prd":
+		l := zerolog.New(os.Stdout).With().Str("service", prefix).Timestamp().Logger()
+		log.Logger = l
+		return &ZeroLogger{logger: l}
+	default:
+		w := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339Nano}
+		z := log.Output(w)
+		if prefix != "" {
+			z = z.With().Str("service", prefix).Logger()
+		}
+		return &ZeroLogger{logger: z}
 	}
-	return &ZeroLogger{logger: z}
 }
 
 func (l *ZeroLogger) Debug(msg string, args ...any) { l.logger.Debug().Msgf(msg, args...) }
