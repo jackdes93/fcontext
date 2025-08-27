@@ -52,7 +52,7 @@ func New(opts ...Option) ServiceContext {
 	sv.parseFlags()
 
 	if sv.logger == nil {
-		sv.logger = newZeroLogger(sv.name)
+		sv.logger = newZeroLogger(sv.name, sv.env)
 	}
 	return sv
 }
