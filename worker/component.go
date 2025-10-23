@@ -3,13 +3,13 @@ package worker
 import (
 	"context"
 
-	"github.com/jackdes93/fcontext"
 	"github.com/jackdes93/fcontext/job"
+	"github.com/jackdes93/fcontext/sctx"
 )
 
 type Component struct {
 	id     string
-	log    fcontext.Logger
+	log    sctx.Logger
 	pool   Pool
 	opts   []PoolOption
 	metric MetricsHook
@@ -29,7 +29,7 @@ func (c *Component) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (c *Component) Activate(ctx context.Context, sv fcontext.ServiceContext) error {
+func (c *Component) Activate(ctx context.Context, sv sctx.ServiceContext) error {
 	c.log = sv.Logger(c.ID())
 
 	c.pool = NewPool(c.log, c.metric, c.opts...)
