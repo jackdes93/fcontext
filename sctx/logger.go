@@ -1,5 +1,5 @@
 // Defined logger
-package fcontext
+package sctx
 
 import (
 	"os"
