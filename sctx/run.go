@@ -19,7 +19,7 @@ func Run(app ServiceContext, fn func(ctx context.Context) error) (err error) {
 		_ = app.Stop()
 	}()
 
-	if e := fn(ctx); err != nil {
+	if e := fn(ctx); e != nil {
 		err = e
 	}
 

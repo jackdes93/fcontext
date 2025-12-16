@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"sort"
 
@@ -49,7 +48,9 @@ func New(opts ...Option) ServiceContext {
 	}
 	sv.initFlags()
 	sv.cmdLine = NewFlagSet(sv.name, nil, "")
-	sv.parseFlags()
+	if err := sv.parseFlags(); err != nil {
+		panic(err)
+	}
 
 	if sv.logger == nil {
 		sv.logger = newZeroLogger(sv.name, sv.env)
@@ -65,7 +66,7 @@ func (s *serviceCtx) initFlags() {
 	}
 }
 
-func (s *serviceCtx) parseFlags() {
+func (s *serviceCtx) parseFlags() error {
 	s.cmdLine.Parse([]string{})
 	envFile := s.envFile
 	if envFile == "" {
@@ -78,11 +79,12 @@ func (s *serviceCtx) parseFlags() {
 
 	if st, err := os.Stat(envFile); err == nil && !st.IsDir() {
 		if err := godotenv.Load(envFile); err != nil {
-			log.Fatalf("Loading env(%s): %s", envFile, err.Error())
+			return err
 		}
 	} else if envFile != ".env" {
-		log.Fatalf("Loading env(%s): %v", envFile, err)
+		return err
 	}
+	return nil
 }
 
 func (s *serviceCtx) Get(id string) (any, bool) {

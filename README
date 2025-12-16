@@ -11,5 +11,14 @@ Thư viện Go tối giản để quản lý lifecycle theo component:
 ## Cài đặt
 
 ```bash
-go get github.com/jackdes93/f-context
+go get github.com/jackdes93/fcontext@latest
+```
+
+Sau đó trong project của bạn:
+
+```bash
+go mod tidy
+```
+
+**Lưu ý:** Đảm bảo bạn đang dùng Go 1.22 hoặc cao hơn.
 
