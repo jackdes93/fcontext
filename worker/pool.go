@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackdes93/fcontext"
 	"github.com/jackdes93/fcontext/job"
-	"github.com/jackdes93/fcontext/sctx"
 )
 
 type MetricsHook interface {
@@ -38,15 +38,18 @@ type Pool interface {
 
 type pool struct {
 	cfg    PoolConfig
-	log    sctx.Logger
+	log    fcontext.Logger
 	metric MetricsHook
 
-	queue chan job.Job
-	wg    sync.WaitGroup
-	once  sync.Once
+	queue    chan job.Job
+	wg       sync.WaitGroup
+	once     sync.Once
+	mu       sync.RWMutex
+	running  bool
+	stopped  bool
 }
 
-func NewPool(log sctx.Logger, metric MetricsHook, opts ...PoolOption) Pool {
+func NewPool(log fcontext.Logger, metric MetricsHook, opts ...PoolOption) Pool {
 	p := &pool{
 		cfg: PoolConfig{
 			Name:        "worker",
@@ -65,6 +68,14 @@ func NewPool(log sctx.Logger, metric MetricsHook, opts ...PoolOption) Pool {
 }
 
 func (p *pool) Submit(j job.Job) bool {
+	p.mu.RLock()
+	if p.stopped {
+		p.mu.RUnlock()
+		p.log.Warn("cannot submit job, pool is stopped")
+		return false
+	}
+	p.mu.RUnlock()
+
 	select {
 	case p.queue <- j:
 		return true
@@ -76,6 +87,10 @@ func (p *pool) Submit(j job.Job) bool {
 
 func (p *pool) Run(ctx context.Context) {
 	p.once.Do(func() {
+		p.mu.Lock()
+		p.running = true
+		p.mu.Unlock()
+
 		for i := 0; i < p.cfg.Size; i++ {
 			p.wg.Add(1)
 			go p.worker(ctx, i)
@@ -86,6 +101,15 @@ func (p *pool) Run(ctx context.Context) {
 }
 
 func (p *pool) Stop(ctx context.Context) {
+	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return
+	}
+	p.stopped = true
+	p.running = false
+	p.mu.Unlock()
+
 	stopCtx, cancel := context.WithTimeout(ctx, p.cfg.StopTimeout)
 	defer cancel()
 
@@ -98,6 +122,9 @@ func (p *pool) Stop(ctx context.Context) {
 	case <-stopCtx.Done():
 		p.log.Warn("worker pool stop timeout reached")
 	case <-done:
+		p.log.Info("worker pool stopped")
+	}
+}
 		p.log.Info("worker pool stopped")
 	}
 }
