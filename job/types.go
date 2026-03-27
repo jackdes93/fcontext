@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -212,12 +213,13 @@ func applyJitter(d time.Duration, pct float64) time.Duration {
 	if pct <= 0 {
 		return d
 	}
-	// simple ±pct jitter (deterministic-ish via time.Now().UnixNano())
-	n := time.Now().UnixNano()
-	sign := int64(1)
-	if n&1 == 1 {
-		sign = -1
+	// Apply ±pct jitter with proper randomization
+	jitterAmount := time.Duration(float64(d) * pct)
+	// random value between -jitterAmount and +jitterAmount
+	offset := time.Duration(rand.Int63n(int64(jitterAmount)*2+1) - int64(jitterAmount))
+	result := d + offset
+	if result < 0 {
+		return 0
 	}
-	j := time.Duration(float64(d) * pct)
-	return d + time.Duration(sign)*j/2
+	return result
 }
