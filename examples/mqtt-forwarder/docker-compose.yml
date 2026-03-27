@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mqtt-data:/mosquitto/data
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "test", "-h", "127.0.0.1", "-W", "1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: mqtt_db
+      POSTGRES_USER: mqtt_user
+      POSTGRES_PASSWORD: mqtt_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mqtt_user"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  app:
+    build: .
+    container_name: mqtt-forwarder
+    depends_on:
+      mqtt:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      MQTT_BROKER: mqtt
+      MQTT_PORT: 1883
+      REDIS_ADDR: redis:6379
+      POSTGRES_DSN: postgres://mqtt_user:mqtt_pass@postgres:5432/mqtt_db?sslmode=disable
+    ports:
+      - "8080:8080"
+    command: /app/mqtt-forwarder --app-env dev
+
+volumes:
+  mqtt-data:
+  redis-data:
+  postgres-data:
