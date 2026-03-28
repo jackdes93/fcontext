@@ -396,31 +396,31 @@ func ProcessCSVFile(hub job.Hub, filePath string) {
 
 ```
 ┌─────────────────────────────────────────┐
-│   Application Layer                      │
-│  (HTTP handlers, services)               │
+│   Application Layer                     │
+│  (HTTP handlers, services)              │
 └──────────────┬──────────────────────────┘
                │ job.New() / hub.Create()
                ▼
 ┌─────────────────────────────────────────┐
-│   Job Package                            │
+│   Job Package                           │
 │  - Config, Options, State Management    │
 │  - Timeout, Retry Logic                 │
 └──────────────┬──────────────────────────┘
                │ hub.Submit()
                ▼
 ┌─────────────────────────────────────────┐
-│   Worker Pool (fcontext/worker)          │
-│  - 10-100 concurrent workers             │
-│  - Distributes jobs                      │
-│  - Manages goroutines                    │
+│   Worker Pool (fcontext/worker)         │
+│  - 10-100 concurrent workers            │
+│  - Distributes jobs                     │
+│  - Manages goroutines                   │
 └──────────────┬──────────────────────────┘
                │ job.Execute()
                ▼
 ┌─────────────────────────────────────────┐
-│   Handler Implementation                 │
+│   Handler Implementation                │
 │  (Email, Database, API, etc.)           │
-│  - Does actual work                      │
-│  - Returns error or success              │
+│  - Does actual work                     │
+│  - Returns error or success             │
 └─────────────────────────────────────────┘
 ```
 
