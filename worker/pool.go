@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackdes93/fcontext"
+	"github.com/jackdes93/fcontext/sctx"
 	"github.com/jackdes93/fcontext/job"
 )
 
@@ -38,7 +38,7 @@ type Pool interface {
 
 type pool struct {
 	cfg    PoolConfig
-	log    fcontext.Logger
+	log    sctx.Logger
 	metric MetricsHook
 
 	queue    chan job.Job
@@ -49,7 +49,7 @@ type pool struct {
 	stopped  bool
 }
 
-func NewPool(log fcontext.Logger, metric MetricsHook, opts ...PoolOption) Pool {
+func NewPool(log sctx.Logger, metric MetricsHook, opts ...PoolOption) Pool {
 	p := &pool{
 		cfg: PoolConfig{
 			Name:        "worker",

@@ -4,14 +4,14 @@ import (
 	"context"
 	"sync"
 
-	"github.com/jackdes93/fcontext"
+	"github.com/jackdes93/fcontext/sctx"
 	"github.com/jackdes93/fcontext/job"
 )
 
 // HubComponent quản lý job hub + worker pool
 type HubComponent struct {
 	id     string
-	log    fcontext.Logger
+	log    sctx.Logger
 	pool   Pool
 	hub    job.Hub
 	opts   []PoolOption
@@ -44,7 +44,7 @@ func (c *HubComponent) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (c *HubComponent) Activate(ctx context.Context, sv fcontext.ServiceContext) error {
+func (c *HubComponent) Activate(ctx context.Context, sv sctx.ServiceContext) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	

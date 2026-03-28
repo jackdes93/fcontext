@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackdes93/fcontext"
+	"github.com/jackdes93/fcontext/sctx"
 	"github.com/jackdes93/fcontext/job"
 )
 
 // MockServiceContext for testing
 type MockServiceContext struct {
-	logger fcontext.Logger
+	logger sctx.Logger
 }
 
-func (m *MockServiceContext) Logger(name string) fcontext.Logger {
+func (m *MockServiceContext) Logger(name string) sctx.Logger {
 	return m.logger
 }
 
