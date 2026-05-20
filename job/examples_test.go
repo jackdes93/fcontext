@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
-	"net/smtp"
-	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -41,7 +39,7 @@ func (h *EmailHandler) Type() string {
 	return "email"
 }
 
-func ExampleSimpleEmailSending(t *testing.T) {
+func runSimpleEmailSending(t *testing.T) {
 	hub := NewHub(func(j Job) bool {
 		go func() {
 			j.Execute(context.Background())
@@ -102,7 +100,7 @@ func (h *UnreliableAPIHandler) Type() string {
 	return "api"
 }
 
-func ExampleRetryWithBackoff(t *testing.T) {
+func runRetryWithBackoff(t *testing.T) {
 	retryCount := 0
 
 	hub := NewHub(func(j Job) bool {
@@ -174,7 +172,7 @@ func (h *SlowOperationHandler) Type() string {
 	return "slow-op"
 }
 
-func ExampleTimeoutHandling(t *testing.T) {
+func runTimeoutHandling(t *testing.T) {
 	hub := NewHub(func(j Job) bool {
 		go func() {
 			j.Execute(context.Background())
@@ -230,7 +228,7 @@ func (h *DatabaseQueryHandler) Type() string {
 	return "database"
 }
 
-func ExampleMultipleJobTypes(t *testing.T) {
+func runMultipleJobTypes(t *testing.T) {
 	completedJobs := 0
 
 	hub := NewHub(func(j Job) bool {
@@ -309,7 +307,7 @@ func (h *PaymentProcessHandler) Type() string {
 	return "payment"
 }
 
-func ExampleErrorClassification(t *testing.T) {
+func runErrorClassification(t *testing.T) {
 	retries := 0
 
 	hub := NewHub(func(j Job) bool {
@@ -383,7 +381,7 @@ func (h *NotificationHandler) Type() string {
 	return "notification"
 }
 
-func ExampleConcurrentExecution(t *testing.T) {
+func runConcurrentExecution(t *testing.T) {
 	completedCount := 0
 
 	hub := NewHub(func(j Job) bool {
@@ -458,7 +456,7 @@ func (h *WebhookDeliveryHandler) Type() string {
 	return "webhook"
 }
 
-func ExampleWebhookDelivery(t *testing.T) {
+func runWebhookDelivery(t *testing.T) {
 	deliveryAttempts := 0
 
 	hub := NewHub(func(j Job) bool {
@@ -543,7 +541,7 @@ func (h *FilesyncHandler) Type() string {
 	return "filesync"
 }
 
-func ExampleLongRunningBatch(t *testing.T) {
+func runLongRunningBatch(t *testing.T) {
 	hub := NewHub(func(j Job) bool {
 		go func() {
 			j.Execute(context.Background())
@@ -620,7 +618,7 @@ func (h *ExternalServiceJobHandler) Type() string {
 	return "service-check"
 }
 
-func ExampleCircuitBreaker(t *testing.T) {
+func runCircuitBreaker(t *testing.T) {
 	// This example shows how to implement circuit breaker on top of job system
 	
 	hub := NewHub(func(j Job) bool {
@@ -713,7 +711,7 @@ func (h *OrderNotificationHandler) Type() string {
 	return "notification"
 }
 
-func ExampleOrderProcessing(t *testing.T) {
+func runOrderProcessing(t *testing.T) {
 	completedJobs := map[string]bool{}
 
 	hub := NewHub(func(j Job) bool {
@@ -786,33 +784,33 @@ func ExampleOrderProcessing(t *testing.T) {
 // ============================================================================
 
 func TestAllExamples(t *testing.T) {
-	fmt.Println("\n" + "="*60)
+	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("Running Job Package Examples")
-	fmt.Println("="*60 + "\n")
+	fmt.Println(strings.Repeat("=", 60))
 
 	examples := []struct {
 		name string
 		fn   func(t *testing.T)
 	}{
-		{"Example 1: Simple Email Sending", ExampleSimpleEmailSending},
-		{"Example 2: Retry with Backoff", ExampleRetryWithBackoff},
-		{"Example 3: Timeout Handling", ExampleTimeoutHandling},
-		{"Example 4: Multiple Job Types", ExampleMultipleJobTypes},
-		{"Example 5: Error Classification", ExampleErrorClassification},
-		{"Example 6: Concurrent Execution", ExampleConcurrentExecution},
-		{"Example 7: Webhook Delivery", ExampleWebhookDelivery},
-		{"Example 8: Long-running Batch", ExampleLongRunningBatch},
-		{"Example 9: Circuit Breaker", ExampleCircuitBreaker},
-		{"Example 10: Order Processing", ExampleOrderProcessing},
+		{"Example 1: Simple Email Sending", runSimpleEmailSending},
+		{"Example 2: Retry with Backoff", runRetryWithBackoff},
+		{"Example 3: Timeout Handling", runTimeoutHandling},
+		{"Example 4: Multiple Job Types", runMultipleJobTypes},
+		{"Example 5: Error Classification", runErrorClassification},
+		{"Example 6: Concurrent Execution", runConcurrentExecution},
+		{"Example 7: Webhook Delivery", runWebhookDelivery},
+		{"Example 8: Long-running Batch", runLongRunningBatch},
+		{"Example 9: Circuit Breaker", runCircuitBreaker},
+		{"Example 10: Order Processing", runOrderProcessing},
 	}
 
 	for _, ex := range examples {
 		fmt.Printf("\n%s\n", ex.name)
-		fmt.Println("-" * 60)
+		fmt.Println(strings.Repeat("-", 60))
 		ex.fn(t)
 	}
 
-	fmt.Println("\n" + "="*60)
+	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("✓ All examples completed successfully!")
-	fmt.Println("="*60 + "\n")
+	fmt.Println(strings.Repeat("=", 60))
 }

@@ -11,9 +11,5 @@ type Component interface {
 }
 
 func componentOrder(c Component) int {
-	type orderer interface{ Order() int }
-	if o, ok := any(c).(orderer); ok {
-		return o.Order()
-	}
-	return 100
+	return c.Order()
 }

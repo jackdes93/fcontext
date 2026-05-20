@@ -137,7 +137,7 @@ func TestHubSubmitAfterStop(t *testing.T) {
 		SleepTime: 50 * time.Millisecond,
 	}
 	
-	j, err := hub.Create("test", handler)
+	_, err := hub.Create("test", handler)
 	if err == nil {
 		t.Fatal("Create after Stop should fail")
 	}
@@ -255,9 +255,31 @@ func TestJobTimeout(t *testing.T) {
 }
 
 // TestJobWithRetryOnFailure tests retry on failure
+// countingHandler fails on first call, succeeds on subsequent calls.
+type countingHandler struct {
+	callCount atomic.Int32
+	name      string
+	delay     time.Duration
+}
+
+func (h *countingHandler) Handle(ctx context.Context) error {
+	count := h.callCount.Add(1)
+	if count == 1 {
+		return errors.New("first attempt failed")
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(h.delay):
+		return nil
+	}
+}
+
+func (h *countingHandler) Type() string { return "counting" }
+
 func TestJobWithRetryOnFailure(t *testing.T) {
 	retryCount := atomic.Int32{}
-	
+
 	hub := NewHub(func(j Job) bool {
 		go func() {
 			ctx := context.Background()
@@ -265,40 +287,26 @@ func TestJobWithRetryOnFailure(t *testing.T) {
 		}()
 		return true
 	})
-	
-	// Handler that fails first time, succeeds on retry
-	callCount := atomic.Int32{}
-	handler := &TestJobHandler{
-		Name:      "failing-job",
-		SleepTime: 10 * time.Millisecond,
-	}
-	
-	originalHandle := handler.Handle
-	handler.Handle = func(ctx context.Context) error {
-		count := callCount.Add(1)
-		if count == 1 {
-			return errors.New("first attempt failed")
-		}
-		return originalHandle(ctx)
-	}
-	
+
+	handler := &countingHandler{name: "failing-job", delay: 10 * time.Millisecond}
+
 	j, _ := hub.Create("test", handler,
 		WithName("retry-on-failure"),
-		WithTimeout(5 * time.Second),
+		WithTimeout(5*time.Second),
 		WithRetries([]time.Duration{20 * time.Millisecond, 20 * time.Millisecond}),
 		WithOnRetry(func(idx int, delay time.Duration, err error) {
 			retryCount.Add(1)
 		}),
 	)
-	
+
 	hub.Submit(j)
-	
+
 	time.Sleep(300 * time.Millisecond)
-	
+
 	if j.State() != StateCompleted {
 		t.Fatalf("Expected StateCompleted after retry, got %v", j.State())
 	}
-	
+
 	if retryCount.Load() == 0 {
 		t.Fatal("Retry callback should have been called")
 	}

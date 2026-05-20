@@ -2,7 +2,6 @@ package sctx
 
 import (
 	"context"
-	"os"
 	"os/signal"
 	"syscall"
 )
@@ -23,6 +22,5 @@ func Run(app ServiceContext, fn func(ctx context.Context) error) (err error) {
 		err = e
 	}
 
-	signal.Stop(make(chan os.Signal, 1))
 	return
 }

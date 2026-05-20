@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 // Example 1: Simple Worker Pool
 // ============================================================================
 
-func ExampleSimpleWorkerPool(t *testing.T) {
+func runSimpleWorkerPool(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -60,7 +61,7 @@ func ExampleSimpleWorkerPool(t *testing.T) {
 // Example 2: Worker Pool with Error Handling
 // ============================================================================
 
-func ExampleWorkerPoolWithErrors(t *testing.T) {
+func runWorkerPoolWithErrors(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -105,7 +106,7 @@ func ExampleWorkerPoolWithErrors(t *testing.T) {
 // Example 3: Concurrent Job Submission
 // ============================================================================
 
-func ExampleConcurrentSubmission(t *testing.T) {
+func runConcurrentSubmission(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -157,7 +158,7 @@ func ExampleConcurrentSubmission(t *testing.T) {
 // Example 4: Worker Pool with Retry Strategy
 // ============================================================================
 
-func ExamplePoolWithRetry(t *testing.T) {
+func runPoolWithRetry(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -200,7 +201,7 @@ func ExamplePoolWithRetry(t *testing.T) {
 // Example 5: Worker Pool Monitoring
 // ============================================================================
 
-func ExamplePoolMonitoring(t *testing.T) {
+func runPoolMonitoring(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -234,7 +235,7 @@ func ExamplePoolMonitoring(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		time.Sleep(200 * time.Millisecond)
 		stats := pool.Stats()
-		fmt.Printf("[Monitor] Running=%v, QueueLen=%d\n", stats.Running, stats.QueueLen)
+		fmt.Printf("[Monitor] Running=%v, QueueLen=%d\n", stats.Running, stats.QueueSize)
 	}
 
 	fmt.Println("✓ Example 5 passed: Pool monitoring")
@@ -244,7 +245,7 @@ func ExamplePoolMonitoring(t *testing.T) {
 // Example 6: Component Integration
 // ============================================================================
 
-func ExampleComponentIntegration(t *testing.T) {
+func runComponentIntegration(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -288,7 +289,7 @@ func ExampleComponentIntegration(t *testing.T) {
 // Example 7: Hub Component with Job Types
 // ============================================================================
 
-func ExampleHubComponentJobTypes(t *testing.T) {
+func runHubComponentJobTypes(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -338,7 +339,7 @@ func ExampleHubComponentJobTypes(t *testing.T) {
 // Example 8: High-Throughput Scenario
 // ============================================================================
 
-func ExampleHighThroughput(t *testing.T) {
+func runHighThroughput(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -386,7 +387,7 @@ func ExampleHighThroughput(t *testing.T) {
 // Example 9: Graceful Shutdown
 // ============================================================================
 
-func ExampleGracefulShutdown(t *testing.T) {
+func runGracefulShutdown(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -445,7 +446,7 @@ func (h *OrderJobHandler) Handle(ctx context.Context) error {
 
 func (h *OrderJobHandler) Type() string { return h.Action }
 
-func ExampleOrderProcessingWorkflow(t *testing.T) {
+func runOrderProcessingWorkflow(t *testing.T) {
 	log := &MockLogger{}
 	metric := &MockMetrics{}
 
@@ -503,33 +504,33 @@ func ExampleOrderProcessingWorkflow(t *testing.T) {
 // ============================================================================
 
 func TestAllExamples(t *testing.T) {
-	fmt.Println("\n" + "="*60)
+	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("Running Worker Package Examples")
-	fmt.Println("="*60 + "\n")
+	fmt.Println(strings.Repeat("=", 60))
 
 	examples := []struct {
 		name string
 		fn   func(t *testing.T)
 	}{
-		{"Example 1: Simple Worker Pool", ExampleSimpleWorkerPool},
-		{"Example 2: Error Handling", ExampleWorkerPoolWithErrors},
-		{"Example 3: Concurrent Submission", ExampleConcurrentSubmission},
-		{"Example 4: Retry Strategy", ExamplePoolWithRetry},
-		{"Example 5: Monitoring", ExamplePoolMonitoring},
-		{"Example 6: Component Integration", ExampleComponentIntegration},
-		{"Example 7: Hub Job Types", ExampleHubComponentJobTypes},
-		{"Example 8: High Throughput", ExampleHighThroughput},
-		{"Example 9: Graceful Shutdown", ExampleGracefulShutdown},
-		{"Example 10: Order Processing Workflow", ExampleOrderProcessingWorkflow},
+		{"Example 1: Simple Worker Pool", runSimpleWorkerPool},
+		{"Example 2: Error Handling", runWorkerPoolWithErrors},
+		{"Example 3: Concurrent Submission", runConcurrentSubmission},
+		{"Example 4: Retry Strategy", runPoolWithRetry},
+		{"Example 5: Monitoring", runPoolMonitoring},
+		{"Example 6: Component Integration", runComponentIntegration},
+		{"Example 7: Hub Job Types", runHubComponentJobTypes},
+		{"Example 8: High Throughput", runHighThroughput},
+		{"Example 9: Graceful Shutdown", runGracefulShutdown},
+		{"Example 10: Order Processing Workflow", runOrderProcessingWorkflow},
 	}
 
 	for _, ex := range examples {
 		fmt.Printf("\n%s\n", ex.name)
-		fmt.Println("-" * 60)
+		fmt.Println(strings.Repeat("-", 60))
 		ex.fn(t)
 	}
 
-	fmt.Println("\n" + "="*60)
+	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("✓ All examples completed successfully!")
-	fmt.Println("="*60 + "\n")
+	fmt.Println(strings.Repeat("=", 60))
 }

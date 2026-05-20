@@ -129,48 +129,47 @@ func (j *job) Execute(ctx context.Context) error {
 
 func (j *job) Retry(ctx context.Context) error {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 
 	if len(j.cfg.Retries) == 0 || j.retryIndex >= len(j.cfg.Retries)-1 {
-		// no more retries
+		lastErr := j.lastErr
 		if j.cfg.OnPermanent != nil {
-			j.cfg.OnPermanent(j.lastErr)
+			j.cfg.OnPermanent(lastErr)
 		}
-		return j.lastErr
+		j.mu.Unlock()
+		return lastErr
 	}
 
 	j.retryIndex++
 	delay := applyJitter(j.cfg.Retries[j.retryIndex], j.cfg.JitterPct)
+	onRetry := j.cfg.OnRetry
+	retryIdx := j.retryIndex
+	lastErr := j.lastErr
 	timer := time.NewTimer(delay)
 	j.mu.Unlock()
+
+	if onRetry != nil {
+		onRetry(retryIdx, delay, lastErr)
+	}
+
 	select {
 	case <-ctx.Done():
 		timer.Stop()
 		j.mu.Lock()
 		j.lastErr = ctx.Err()
 		j.state = StateFailed
-		return j.lastErr
+		j.mu.Unlock()
+		return ctx.Err()
 	case <-timer.C:
-		// proceed
 	}
-	j.mu.Lock()
 
-	// unlock before execute
-	j.mu.Unlock()
 	err := j.Execute(ctx)
+
 	j.mu.Lock()
+	defer j.mu.Unlock()
 
 	if err == nil {
 		j.state = StateCompleted
 		return nil
-	}
-	if j.cfg.OnRetry != nil {
-		// next delay preview (if any)
-		var next time.Duration
-		if j.retryIndex < len(j.cfg.Retries)-1 {
-			next = applyJitter(j.cfg.Retries[j.retryIndex+1], j.cfg.JitterPct)
-		}
-		j.cfg.OnRetry(j.retryIndex, next, err)
 	}
 	if j.retryIndex >= len(j.cfg.Retries)-1 {
 		j.state = StateRetryFailed
@@ -188,8 +187,8 @@ func (j *job) RunWithRetry(ctx context.Context) error {
 	for {
 		if err := j.Retry(ctx); err == nil {
 			return nil
-		} else if j.retryIndex >= len(j.cfg.Retries)-1 {
-			return j.lastErr
+		} else if j.RetryIndex() >= len(j.cfg.Retries)-1 {
+			return j.LastError()
 		}
 	}
 }

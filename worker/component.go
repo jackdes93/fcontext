@@ -32,8 +32,11 @@ func (c *Component) Stop(ctx context.Context) error {
 func (c *Component) Activate(ctx context.Context, sv sctx.ServiceContext) error {
 	c.log = sv.Logger(c.ID())
 
+	if c.pool != nil {
+		c.pool.Stop(ctx)
+	}
+
 	c.pool = NewPool(c.log, c.metric, c.opts...)
-	// Chạy pool nền
 	go c.pool.Run(ctx)
 
 	c.log.Info("worker component started")

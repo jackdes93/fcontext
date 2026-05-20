@@ -59,8 +59,16 @@ func New(opts ...Option) ServiceContext {
 }
 
 func (s *serviceCtx) initFlags() {
-	flag.StringVar(&s.env, "app-env", DevEnv, "Env for service. Ex: dev | stg | prd")
-	flag.StringVar(&s.envFile, "env-file", "", "Path to .env file")
+	if flag.Lookup("app-env") == nil {
+		flag.StringVar(&s.env, "app-env", DevEnv, "Env for service. Ex: dev | stg | prd")
+	} else if v := os.Getenv("APP_ENV"); v != "" {
+		s.env = v
+	}
+	if flag.Lookup("env-file") == nil {
+		flag.StringVar(&s.envFile, "env-file", "", "Path to .env file")
+	} else {
+		s.envFile = os.Getenv("ENV_FILE")
+	}
 	for _, c := range s.components {
 		c.InitFlags()
 	}

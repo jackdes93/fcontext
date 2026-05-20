@@ -3,7 +3,6 @@ package job
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,9 +10,7 @@ import (
 
 // TestNewJob tests creating a new job
 func TestNewJob(t *testing.T) {
-	called := false
 	handler := func(ctx context.Context) error {
-		called = true
 		return nil
 	}
 

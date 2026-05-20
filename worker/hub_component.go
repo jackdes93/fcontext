@@ -50,6 +50,13 @@ func (c *HubComponent) Activate(ctx context.Context, sv sctx.ServiceContext) err
 	
 	c.log = sv.Logger(c.ID())
 
+	if c.pool != nil {
+		c.pool.Stop(ctx)
+	}
+	if c.hub != nil {
+		c.hub.Stop(ctx)
+	}
+
 	c.pool = NewPool(c.log, c.metric, c.opts...)
 	
 	// Tạo hub với pool

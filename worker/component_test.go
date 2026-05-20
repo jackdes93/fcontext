@@ -14,9 +14,14 @@ type MockServiceContext struct {
 	logger sctx.Logger
 }
 
-func (m *MockServiceContext) Logger(name string) sctx.Logger {
-	return m.logger
-}
+func (m *MockServiceContext) Load() error                    { return nil }
+func (m *MockServiceContext) MustGet(id string) any          { return nil }
+func (m *MockServiceContext) Get(id string) (any, bool)      { return nil, false }
+func (m *MockServiceContext) Logger(name string) sctx.Logger { return m.logger }
+func (m *MockServiceContext) EnvName() string                { return "dev" }
+func (m *MockServiceContext) GetName() string                { return "test" }
+func (m *MockServiceContext) Stop() error                    { return nil }
+func (m *MockServiceContext) OutEnv()                        {}
 
 // TestComponentActivate tests component activation
 func TestComponentActivate(t *testing.T) {

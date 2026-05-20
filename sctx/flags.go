@@ -115,7 +115,7 @@ func isStringFlag(f *flag.Flag) bool {
 	return strings.Contains(tv, "string") || strings.Contains(tv, "String")
 }
 
-func isZeroValue(f *flag.Flag, def string) bool {
+func isZeroValue(_ *flag.Flag, def string) bool {
 	// Xem def value “coi như zero” với một số kiểu phổ biến
 	if def == "" || def == "0" || def == "false" {
 		return true

@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -31,9 +32,8 @@ type Hub interface {
 // hub struct quản lý job submission
 type hub struct {
 	mu      sync.RWMutex
-	poolFn  func(j Job) bool // function để submit job vào pool
+	poolFn  func(j Job) bool
 	stopped bool
-	jobs    map[string]Job   // tracking running jobs
 }
 
 // NewHub tạo hub mới
@@ -41,15 +41,11 @@ type hub struct {
 func NewHub(poolFn func(j Job) bool) Hub {
 	if poolFn == nil {
 		return &hub{
-			poolFn:  func(j Job) bool { return true },
-			jobs:    make(map[string]Job),
-			stopped: false,
+			poolFn: func(j Job) bool { return true },
 		}
 	}
 	return &hub{
-		poolFn:  poolFn,
-		jobs:    make(map[string]Job),
-		stopped: false,
+		poolFn: poolFn,
 	}
 }
 
@@ -111,8 +107,6 @@ func (h *hub) Stop(ctx context.Context) error {
 	defer h.mu.Unlock()
 	
 	h.stopped = true
-	// Cleanup jobs tracking
-	h.jobs = make(map[string]Job)
 	return nil
 }
 
@@ -141,37 +135,60 @@ func (a *hubJobAdapter) Execute(ctx context.Context) error {
 		ctx2, cancel = context.WithTimeout(ctx, a.cfg.MaxTimeout)
 		defer cancel()
 	}
-	
-	err := a.handler.Handle(ctx2)
-	if err != nil {
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- a.handler.Handle(ctx2) }()
+
+	select {
+	case <-ctx2.Done():
+		err := ctx2.Err()
 		a.setError(err)
-		a.setState(StateFailed)
+		if errors.Is(err, context.DeadlineExceeded) {
+			a.setState(StateTimeout)
+		} else {
+			a.setState(StateFailed)
+		}
 		return err
+	case err := <-errCh:
+		if err != nil {
+			a.setError(err)
+			a.setState(StateFailed)
+			return err
+		}
+		a.setState(StateCompleted)
+		if a.cfg.OnComplete != nil {
+			a.cfg.OnComplete()
+		}
+		return nil
 	}
-	
-	a.setState(StateCompleted)
-	if a.cfg.OnComplete != nil {
-		a.cfg.OnComplete()
-	}
-	return nil
 }
 
 func (a *hubJobAdapter) Retry(ctx context.Context) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 
 	if len(a.cfg.Retries) == 0 || a.retryIndex >= len(a.cfg.Retries)-1 {
+		lastErr := a.lastErr
 		if a.cfg.OnPermanent != nil {
-			a.cfg.OnPermanent(a.lastErr)
+			a.cfg.OnPermanent(lastErr)
 		}
-		return a.lastErr
+		a.mu.Unlock()
+		return lastErr
 	}
 
 	a.retryIndex++
 	delay := applyJitter(a.cfg.Retries[a.retryIndex], a.cfg.JitterPct)
+	// Capture values before releasing the lock to pass to OnRetry.
+	onRetry := a.cfg.OnRetry
+	retryIdx := a.retryIndex
+	lastErr := a.lastErr
 	timer := time.NewTimer(delay)
 	a.mu.Unlock()
-	
+
+	// Notify before sleeping so the caller knows a retry is about to start.
+	if onRetry != nil {
+		onRetry(retryIdx, delay, lastErr)
+	}
+
 	select {
 	case <-ctx.Done():
 		timer.Stop()
@@ -182,34 +199,23 @@ func (a *hubJobAdapter) Retry(ctx context.Context) error {
 		return ctx.Err()
 	case <-timer.C:
 	}
-	
-	a.mu.Lock()
-	a.mu.Unlock()
-	
+
 	err := a.Execute(ctx)
+
 	a.mu.Lock()
-	
+	defer a.mu.Unlock()
+
 	if err == nil {
 		a.state = StateCompleted
-		a.mu.Unlock()
 		return nil
 	}
-	
-	if a.cfg.OnRetry != nil {
-		var next time.Duration
-		if a.retryIndex < len(a.cfg.Retries)-1 {
-			next = applyJitter(a.cfg.Retries[a.retryIndex+1], a.cfg.JitterPct)
-		}
-		a.cfg.OnRetry(a.retryIndex, next, err)
-	}
-	
+
 	if a.retryIndex >= len(a.cfg.Retries)-1 {
 		a.state = StateRetryFailed
 		if a.cfg.OnPermanent != nil {
 			a.cfg.OnPermanent(err)
 		}
 	}
-	a.mu.Unlock()
 	return err
 }
 

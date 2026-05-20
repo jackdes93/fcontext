@@ -40,6 +40,9 @@ func (p *postgresDB) Order() int {
 func (p *postgresDB) ID() string { return p.id }
 
 func (p *postgresDB) InitFlags() {
+	if flag.Lookup("postgres-uri") != nil {
+		return
+	}
 	flag.StringVar(&p.cfg.uri, "postgres-uri", "postgres://localhost:5432/mqtt_db?sslmode=disable", "uri connect string of postgresDB")
 	flag.IntVar(&p.cfg.maxConns, "postgres-max-conn", 4, "postgres max connections")
 	flag.IntVar(&p.cfg.minConns, "postgres-min-conn", 2, "postgres min connections")
@@ -86,16 +89,27 @@ func (p *postgresDB) Stop(ctx context.Context) error {
 		return nil
 	}
 	p.logger.Info("stopping postgres service....")
-	_, cancel := context.WithTimeout(ctx, time.Second*5)
+	stopCtx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
-	p.client.Close()
+
+	done := make(chan struct{})
+	go func() {
+		p.client.Close()
+		close(done)
+	}()
+
+	select {
+	case <-stopCtx.Done():
+		p.logger.Warn("postgres stop timeout reached")
+	case <-done:
+	}
 	p.client = nil
 	p.logger.Info("postgresDB service stopped")
 	return nil
 }
 
 func (p *postgresDB) Query(ctx context.Context, query string, args ...any) ([]map[string]any, error) {
-	rows, err := p.client.Query(ctx, query)
+	rows, err := p.client.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +120,7 @@ func (p *postgresDB) Query(ctx context.Context, query string, args ...any) ([]ma
 }
 
 func (p *postgresDB) QueryOne(ctx context.Context, query string, args ...any) (map[string]any, error) {
-	rows, err := p.client.Query(ctx, query)
+	rows, err := p.client.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

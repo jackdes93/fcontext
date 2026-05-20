@@ -30,10 +30,20 @@ func WithSize(n int) PoolOption                  { return func(c *PoolConfig) { 
 func WithQueueSize(n int) PoolOption             { return func(c *PoolConfig) { c.QueueSize = n } }
 func WithStopTimeout(d time.Duration) PoolOption { return func(c *PoolConfig) { c.StopTimeout = d } }
 
+type PoolStats struct {
+	Name        string
+	WorkerCount int
+	QueueSize   int
+	Running     bool
+	Stopped     bool
+}
+
 type Pool interface {
-	Submit(j job.Job) bool    // false nếu queue full
+	Submit(j job.Job) bool    // false nếu queue full hoặc pool chưa chạy
 	Run(ctx context.Context)  // blocking
 	Stop(ctx context.Context) // graceful stop
+	IsRunning() bool
+	Stats() PoolStats
 }
 
 type pool struct {
@@ -41,12 +51,12 @@ type pool struct {
 	log    sctx.Logger
 	metric MetricsHook
 
-	queue    chan job.Job
-	wg       sync.WaitGroup
-	once     sync.Once
-	mu       sync.RWMutex
-	running  bool
-	stopped  bool
+	queue   chan job.Job
+	wg      sync.WaitGroup
+	once    sync.Once
+	mu      sync.RWMutex
+	running bool
+	stopped bool
 }
 
 func NewPool(log sctx.Logger, metric MetricsHook, opts ...PoolOption) Pool {
@@ -68,13 +78,23 @@ func NewPool(log sctx.Logger, metric MetricsHook, opts ...PoolOption) Pool {
 }
 
 func (p *pool) Submit(j job.Job) bool {
+	if j == nil {
+		return false
+	}
+
 	p.mu.RLock()
-	if p.stopped {
-		p.mu.RUnlock()
+	running := p.running
+	stopped := p.stopped
+	p.mu.RUnlock()
+
+	if stopped {
 		p.log.Warn("cannot submit job, pool is stopped")
 		return false
 	}
-	p.mu.RUnlock()
+	if !running {
+		p.log.Warn("cannot submit job, pool is not running")
+		return false
+	}
 
 	select {
 	case p.queue <- j:
@@ -110,10 +130,9 @@ func (p *pool) Stop(ctx context.Context) {
 	p.running = false
 	p.mu.Unlock()
 
-	stopCtx, cancel := context.WithTimeout(ctx, p.cfg.StopTimeout)
+	stopCtx, cancel := context.WithTimeout(context.Background(), p.cfg.StopTimeout)
 	defer cancel()
 
-	// đóng queue để worker dọn dẹp
 	close(p.queue)
 	done := make(chan struct{})
 	go func() { p.wg.Wait(); close(done) }()
@@ -125,7 +144,22 @@ func (p *pool) Stop(ctx context.Context) {
 		p.log.Info("worker pool stopped")
 	}
 }
-		p.log.Info("worker pool stopped")
+
+func (p *pool) IsRunning() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.running
+}
+
+func (p *pool) Stats() PoolStats {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return PoolStats{
+		Name:        p.cfg.Name,
+		WorkerCount: p.cfg.Size,
+		QueueSize:   p.cfg.QueueSize,
+		Running:     p.running,
+		Stopped:     p.stopped,
 	}
 }
 
@@ -160,7 +194,5 @@ func (p *pool) worker(ctx context.Context, idx int) {
 }
 
 func nameOf(j job.Job) string {
-	// best-effort: dùng type name làm job name khi không có metadata;
-	// nếu cần “tên” chính xác, bạn có thể mở rộng Job interface để expose Name().
 	return "job"
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackdes93/fcontext/job"
+	"github.com/jackdes93/fcontext/sctx"
 )
 
 // MockLogger for testing
@@ -18,10 +19,11 @@ type MockLogger struct {
 	mu       sync.Mutex
 }
 
+func (m *MockLogger) Debug(msg string, args ...interface{})     { m.log("DEBUG", msg, args...) }
 func (m *MockLogger) Info(msg string, args ...interface{})      { m.log("INFO", msg, args...) }
 func (m *MockLogger) Warn(msg string, args ...interface{})      { m.log("WARN", msg, args...) }
 func (m *MockLogger) Error(msg string, args ...interface{})     { m.log("ERROR", msg, args...) }
-func (m *MockLogger) WithPrefix(prefix string) interface{} {
+func (m *MockLogger) WithPrefix(prefix string) sctx.Logger {
 	return m
 }
 
