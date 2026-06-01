@@ -53,7 +53,7 @@ func runSimpleWorkerPool(t *testing.T) {
 	// Wait for jobs to complete
 	time.Sleep(500 * time.Millisecond)
 
-	fmt.Printf("✓ Completed %d jobs\n", metric.started)
+	fmt.Printf("✓ Completed %d jobs\n", atomic.LoadInt32(&metric.started))
 	fmt.Println("✓ Example 1 passed: Simple worker pool")
 }
 
@@ -97,7 +97,7 @@ func runWorkerPoolWithErrors(t *testing.T) {
 	time.Sleep(400 * time.Millisecond)
 
 	fmt.Printf("Started: %d, Succeeded: %d, Failed: %d\n",
-		metric.started, metric.succeeded, metric.failed)
+		atomic.LoadInt32(&metric.started), atomic.LoadInt32(&metric.succeeded), atomic.LoadInt32(&metric.failed))
 
 	fmt.Println("✓ Example 2 passed: Error handling")
 }
@@ -281,7 +281,7 @@ func runComponentIntegration(t *testing.T) {
 
 	time.Sleep(300 * time.Millisecond)
 
-	fmt.Printf("Component submitted %d jobs\n", metric.started)
+	fmt.Printf("Component submitted %d jobs\n", atomic.LoadInt32(&metric.started))
 	fmt.Println("✓ Example 6 passed: Component integration")
 }
 
@@ -331,7 +331,7 @@ func runHubComponentJobTypes(t *testing.T) {
 
 	time.Sleep(300 * time.Millisecond)
 
-	fmt.Printf("Submitted %d jobs via hub\n", metric.started)
+	fmt.Printf("Submitted %d jobs via hub\n", atomic.LoadInt32(&metric.started))
 	fmt.Println("✓ Example 7 passed: Hub with job types")
 }
 
@@ -375,10 +375,10 @@ func runHighThroughput(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	elapsed := time.Since(start)
-	throughput := float64(metric.started) / elapsed.Seconds()
+	throughput := float64(atomic.LoadInt32(&metric.started)) / elapsed.Seconds()
 
 	fmt.Printf("Processed %d jobs in %v (%.0f jobs/sec)\n",
-		metric.started, elapsed, throughput)
+		atomic.LoadInt32(&metric.started), elapsed, throughput)
 
 	fmt.Println("✓ Example 8 passed: High throughput")
 }
@@ -425,7 +425,7 @@ func runGracefulShutdown(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	fmt.Printf("Processed %d jobs before shutdown\n", metric.started)
+	fmt.Printf("Processed %d jobs before shutdown\n", atomic.LoadInt32(&metric.started))
 	fmt.Println("✓ Example 9 passed: Graceful shutdown")
 }
 
@@ -495,7 +495,7 @@ func runOrderProcessingWorkflow(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	fmt.Printf("Processed %d workflow steps\n", metric.started)
+	fmt.Printf("Processed %d workflow steps\n", atomic.LoadInt32(&metric.started))
 	fmt.Println("✓ Example 10 passed: Complete order processing workflow")
 }
 

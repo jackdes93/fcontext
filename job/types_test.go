@@ -409,6 +409,22 @@ func TestJobLastError(t *testing.T) {
 	}
 }
 
+// TestJobName tests the Name() method
+func TestJobName(t *testing.T) {
+	j := New(func(ctx context.Context) error { return nil }, WithName("my-job"))
+	if j.Name() != "my-job" {
+		t.Fatalf("Expected 'my-job', got %q", j.Name())
+	}
+}
+
+// TestJobNameDefault tests fallback name when WithName not used
+func TestJobNameDefault(t *testing.T) {
+	j := New(func(ctx context.Context) error { return nil })
+	if j.Name() != "unnamed" {
+		t.Fatalf("Expected 'unnamed', got %q", j.Name())
+	}
+}
+
 // TestJobWithoutTimeout tests job without timeout
 func TestJobWithoutTimeout(t *testing.T) {
 	handler := func(ctx context.Context) error {

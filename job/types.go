@@ -1,8 +1,13 @@
+// Package job provides async job execution with automatic retry, configurable
+// timeout, jitter-based backoff, and lifecycle callbacks (OnRetry, OnComplete,
+// OnPermanent). Jobs are created with New() and executed directly or submitted
+// to a worker.Pool via the Hub pattern.
 package job
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -58,6 +63,7 @@ type Job interface {
 	Retry(ctx context.Context) error
 	RunWithRetry(ctx context.Context) error
 
+	Name() string
 	State() State
 	RetryIndex() int
 	LastError() error
@@ -89,14 +95,27 @@ func New(h Handler, opts ...Option) Job {
 }
 
 func (j *job) Execute(ctx context.Context) error {
-	j.setState(StateRunning)
+	j.mu.Lock()
+	if j.state == StateCompleted || j.state == StateRetryFailed {
+		s := j.state
+		j.mu.Unlock()
+		return fmt.Errorf("%w: %s", ErrInvalidState, s)
+	}
+	j.state = StateRunning
+	j.mu.Unlock()
 
-	// Apply timeout if configured
 	ctx2 := ctx
 	var cancel context.CancelFunc
 	if j.cfg.MaxTimeout > 0 {
 		ctx2, cancel = context.WithTimeout(ctx, j.cfg.MaxTimeout)
-		defer cancel()
+		// AfterFunc calls cancel() as soon as ctx2 times out, releasing the timer
+		// resource even while the handler goroutine is still running. Calling
+		// cancel() twice is safe (idempotent).
+		stopAfter := context.AfterFunc(ctx2, cancel)
+		defer func() {
+			stopAfter() // prevent redundant AfterFunc if Execute returns first
+			cancel()
+		}()
 	}
 
 	errCh := make(chan error, 1)
@@ -191,6 +210,13 @@ func (j *job) RunWithRetry(ctx context.Context) error {
 			return j.LastError()
 		}
 	}
+}
+
+func (j *job) Name() string {
+	if j.cfg.Name != "" {
+		return j.cfg.Name
+	}
+	return "unnamed"
 }
 
 func (j *job) State() State     { j.mu.Lock(); defer j.mu.Unlock(); return j.state }

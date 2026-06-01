@@ -64,8 +64,8 @@ func (c *HubComponent) Activate(ctx context.Context, sv sctx.ServiceContext) err
 		return c.pool.Submit(j)
 	})
 	
-	// Chạy pool nền
 	go c.pool.Run(ctx)
+	<-c.pool.Ready()
 
 	c.log.Info("hub component started")
 	return nil

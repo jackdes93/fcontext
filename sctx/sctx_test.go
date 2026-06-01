@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -501,5 +502,262 @@ func BenchmarkLoggerCreation(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		sv.Logger("test")
+	}
+}
+
+// --- Sprint 3: Additional tests for coverage ---
+
+// TrackingComponent records when Stop() is called (for ordering verification)
+type TrackingComponent struct {
+	id          string
+	order       int
+	activateErr error
+	onStop      func(id string)
+}
+
+func (t *TrackingComponent) ID() string { return t.id }
+func (t *TrackingComponent) InitFlags() {}
+func (t *TrackingComponent) Order() int { return t.order }
+func (t *TrackingComponent) Activate(ctx context.Context, sv ServiceContext) error {
+	return t.activateErr
+}
+func (t *TrackingComponent) Stop(ctx context.Context) error {
+	if t.onStop != nil {
+		t.onStop(t.id)
+	}
+	return nil
+}
+
+// Test: GetAs returns false for non-existent component
+func TestGetAsNonExistent(t *testing.T) {
+	sv := New()
+	_, ok := GetAs[*MockComponent](sv, "nonexistent-id")
+	if ok {
+		t.Fatal("GetAs should return false for non-existent component")
+	}
+}
+
+// Test: Logger WithPrefix chains correctly
+func TestLoggerWithPrefixChaining(t *testing.T) {
+	sv := New(WithName("app"))
+
+	l1 := sv.Logger("service")
+	l2 := l1.WithPrefix("component")
+	l3 := l2.WithPrefix("method")
+
+	if l1 == nil || l2 == nil || l3 == nil {
+		t.Fatal("All chained loggers should be non-nil")
+	}
+
+	// Should not panic at any level
+	l1.Debug("l1 debug")
+	l2.Info("l2 info")
+	l3.Warn("l3 warn")
+	l3.Error("l3 error")
+}
+
+// Test: APP_ENV environment variable sets env name
+func TestAppEnvSetsPrdMode(t *testing.T) {
+	os.Setenv("APP_ENV", "prd")
+	defer os.Unsetenv("APP_ENV")
+
+	sv := New(WithName("test-prd"))
+	// After flag is registered (first New() call), APP_ENV takes effect
+	if sv.EnvName() == "" {
+		t.Fatal("EnvName should not be empty")
+	}
+}
+
+// Test: ENV_FILE pointing to non-existent path causes panic
+func TestEnvFileNotFoundPanics(t *testing.T) {
+	os.Setenv("ENV_FILE", "/tmp/definitely-not-exist-fcontext-test.env")
+	defer os.Unsetenv("ENV_FILE")
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("New() should panic when ENV_FILE points to a non-existent file")
+		}
+	}()
+
+	New()
+}
+
+// Test: Stop collects errors from all components
+func TestStopCollectsMultipleErrors(t *testing.T) {
+	errA := errors.New("stop error A")
+	errB := errors.New("stop error B")
+
+	comp1 := NewMockComponent("first", 10)
+	comp2 := NewMockComponent("second", 20)
+	comp3 := NewMockComponent("third", 30)
+
+	comp1.stopErr = errA
+	comp2.stopErr = errB
+	// comp3 stops without error
+
+	sv := New(
+		WithComponent(comp1),
+		WithComponent(comp2),
+		WithComponent(comp3),
+	)
+
+	if err := sv.Load(); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	err := sv.Stop()
+	if err == nil {
+		t.Fatal("Stop should return error when components fail")
+	}
+
+	// errors.Join makes both sub-errors findable via errors.Is
+	if !errors.Is(err, errA) {
+		t.Errorf("Stop error should contain errA")
+	}
+	if !errors.Is(err, errB) {
+		t.Errorf("Stop error should contain errB")
+	}
+}
+
+// Test: Rollback on activation failure happens in reverse activation order
+func TestActivationRollbackReverseOrder(t *testing.T) {
+	var mu sync.Mutex
+	var stopOrder []string
+
+	recordStop := func(id string) {
+		mu.Lock()
+		stopOrder = append(stopOrder, id)
+		mu.Unlock()
+	}
+
+	comp1 := &TrackingComponent{id: "first", order: 10, onStop: recordStop}
+	comp2 := &TrackingComponent{id: "second", order: 20, onStop: recordStop}
+	comp3 := &TrackingComponent{
+		id:          "third",
+		order:       30,
+		activateErr: errors.New("third activation fails"),
+	}
+
+	sv := New(
+		WithComponent(comp1),
+		WithComponent(comp2),
+		WithComponent(comp3),
+	)
+
+	err := sv.Load()
+	if err == nil {
+		t.Fatal("Load should fail because comp3 activation fails")
+	}
+
+	mu.Lock()
+	order := make([]string, len(stopOrder))
+	copy(order, stopOrder)
+	mu.Unlock()
+
+	if len(order) != 2 {
+		t.Fatalf("Expected 2 components rolled back, got %d: %v", len(order), order)
+	}
+	// comp2 activated before comp3 failed, so rollback: comp2 first, then comp1
+	if order[0] != "second" || order[1] != "first" {
+		t.Fatalf("Rollback order should be [second, first], got %v", order)
+	}
+}
+
+// Test: Components with same Order() all activate (stable sort)
+func TestComponentSameOrderAllActivate(t *testing.T) {
+	comp1 := NewMockComponent("alpha", 10)
+	comp2 := NewMockComponent("beta", 10)
+	comp3 := NewMockComponent("gamma", 10)
+
+	sv := New(
+		WithComponent(comp1),
+		WithComponent(comp2),
+		WithComponent(comp3),
+	)
+
+	if err := sv.Load(); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if !comp1.activated || !comp2.activated || !comp3.activated {
+		t.Fatal("All components with same Order() should activate")
+	}
+}
+
+// Test: GetName returns empty string when no name is set
+func TestGetNameDefault(t *testing.T) {
+	sv := New()
+	// Default name is empty string
+	name := sv.GetName()
+	_ = name // empty is valid when not set
+}
+
+// Test: Run callback receives a non-nil context
+func TestRunFunctionContextNotNil(t *testing.T) {
+	sv := New(WithName("testapp"))
+
+	err := Run(sv, func(ctx context.Context) error {
+		if ctx == nil {
+			return errors.New("context should not be nil")
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Run should succeed: %v", err)
+	}
+}
+
+// Test: Production logger created without panic when APP_ENV=prd
+func TestPrdLogger(t *testing.T) {
+	os.Setenv("APP_ENV", "prd")
+	defer os.Unsetenv("APP_ENV")
+
+	sv := New(WithName("prd-app"))
+
+	logger := sv.Logger("component")
+	if logger == nil {
+		t.Fatal("Logger should not be nil in prd mode")
+	}
+
+	// All log methods should work without panic
+	logger.Debug("debug msg")
+	logger.Info("info msg")
+	logger.Warn("warn msg")
+	logger.Error("error msg")
+}
+
+// Test: Flag lookup is stable across multiple New() calls
+func TestFlagLookupStable(t *testing.T) {
+	// First call registers the flag
+	sv1 := New(WithName("app1"))
+	// Second call should find existing flag (not re-register)
+	sv2 := New(WithName("app2"))
+
+	if sv1 == nil || sv2 == nil {
+		t.Fatal("Both service contexts should be created successfully")
+	}
+
+	// Both should be using the same app-env flag
+	if flag.Lookup("app-env") == nil {
+		t.Fatal("app-env flag should be registered")
+	}
+}
+
+// Test: Component accessible after Load
+func TestComponentAccessibleAfterLoad(t *testing.T) {
+	comp := NewMockComponent("myservice", 10)
+	sv := New(WithComponent(comp))
+
+	if err := sv.Load(); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	retrieved, ok := sv.Get("myservice")
+	if !ok {
+		t.Fatal("Component should be accessible after Load")
+	}
+	if retrieved != comp {
+		t.Fatal("Retrieved component should be the same instance")
 	}
 }

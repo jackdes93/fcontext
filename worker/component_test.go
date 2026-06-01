@@ -2,11 +2,12 @@ package worker
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/jackdes93/fcontext/sctx"
 	"github.com/jackdes93/fcontext/job"
+	"github.com/jackdes93/fcontext/sctx"
 )
 
 // MockServiceContext for testing
@@ -86,7 +87,7 @@ func TestComponentSubmit(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	if metric.started <= 0 {
+	if atomic.LoadInt32(&metric.started) <= 0 {
 		t.Fatal("Job should have been started")
 	}
 }
@@ -154,7 +155,7 @@ func TestHubComponentSubmit(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	if metric.started <= 0 {
+	if atomic.LoadInt32(&metric.started) <= 0 {
 		t.Fatal("Job should have been started")
 	}
 }
@@ -233,8 +234,8 @@ func TestHubComponentMultipleJobs(t *testing.T) {
 
 	time.Sleep(400 * time.Millisecond)
 
-	if metric.started < 5 {
-		t.Fatalf("Expected at least 5 jobs started, got %d", metric.started)
+	if atomic.LoadInt32(&metric.started) < 5 {
+		t.Fatalf("Expected at least 5 jobs started, got %d", atomic.LoadInt32(&metric.started))
 	}
 }
 

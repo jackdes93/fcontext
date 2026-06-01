@@ -38,6 +38,9 @@ func (c *Component) Activate(ctx context.Context, sv sctx.ServiceContext) error 
 
 	c.pool = NewPool(c.log, c.metric, c.opts...)
 	go c.pool.Run(ctx)
+	// Block until workers are registered in wg — Stop() can then safely call
+	// wg.Wait() without racing against wg.Add() in Run().
+	<-c.pool.Ready()
 
 	c.log.Info("worker component started")
 	return nil

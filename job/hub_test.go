@@ -39,6 +39,39 @@ func (t *TestJobHandler) Type() string {
 	return "test"
 }
 
+// TestHubJobAdapterName tests that hubJobAdapter.Name() returns jobType
+func TestHubJobAdapterName(t *testing.T) {
+	hub := NewHub(func(j Job) bool { return true })
+
+	handler := &TestJobHandler{Name: "h", SleepTime: 0}
+	j, err := hub.Create("send-email", handler)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if j.Name() != "send-email" {
+		t.Fatalf("Expected 'send-email', got %q", j.Name())
+	}
+}
+
+// TestHubCreateSentinelErrors tests sentinel error types from Hub.Create
+func TestHubCreateSentinelErrors(t *testing.T) {
+	h := NewHub(func(j Job) bool { return true })
+	handler := &TestJobHandler{Name: "h"}
+
+	if _, err := h.Create("", handler); !errors.Is(err, ErrJobTypeEmpty) {
+		t.Fatalf("expected ErrJobTypeEmpty, got %v", err)
+	}
+	if _, err := h.Create("t", nil); !errors.Is(err, ErrHandlerNil) {
+		t.Fatalf("expected ErrHandlerNil, got %v", err)
+	}
+
+	h.Stop(context.Background())
+	if _, err := h.Create("t", handler); !errors.Is(err, ErrHubStopped) {
+		t.Fatalf("expected ErrHubStopped, got %v", err)
+	}
+}
+
 // TestHub tests Hub functionality
 func TestHubCreate(t *testing.T) {
 	hub := NewHub(func(j Job) bool {
@@ -391,23 +424,23 @@ func TestHubJobExecution(t *testing.T) {
 		SleepTime: 50 * time.Millisecond,
 	}
 	
-	completeCalled := false
+	var completeCalled atomic.Bool
 	j, _ := hub.Create("test", handler,
 		WithName("execution-test"),
 		WithOnComplete(func() {
-			completeCalled = true
+			completeCalled.Store(true)
 		}),
 	)
-	
+
 	hub.Submit(j)
-	
+
 	time.Sleep(200 * time.Millisecond)
-	
+
 	if j.State() != StateCompleted {
 		t.Fatalf("Job should be completed, got state %v", j.State())
 	}
-	
-	if !completeCalled {
+
+	if !completeCalled.Load() {
 		t.Fatal("OnComplete callback should have been called")
 	}
 }
@@ -447,8 +480,8 @@ func TestJobContextCancellation(t *testing.T) {
 
 // TestJobPermanentError tests permanent error callback
 func TestJobPermanentError(t *testing.T) {
-	permanentErrorCalled := false
-	
+	var permanentErrorCalled atomic.Bool
+
 	hub := NewHub(func(j Job) bool {
 		go func() {
 			ctx := context.Background()
@@ -456,27 +489,27 @@ func TestJobPermanentError(t *testing.T) {
 		}()
 		return true
 	})
-	
+
 	handler := &TestJobHandler{
 		Name:      "error-job",
 		SleepTime: 10 * time.Millisecond,
 		ShouldErr: true,
 	}
-	
+
 	j, _ := hub.Create("test", handler,
 		WithName("permanent-error-test"),
 		WithTimeout(5 * time.Second),
 		WithRetries([]time.Duration{10 * time.Millisecond}),
 		WithOnPermanent(func(lastErr error) {
-			permanentErrorCalled = true
+			permanentErrorCalled.Store(true)
 		}),
 	)
-	
+
 	hub.Submit(j)
-	
+
 	time.Sleep(300 * time.Millisecond)
-	
-	if !permanentErrorCalled {
+
+	if !permanentErrorCalled.Load() {
 		t.Fatal("OnPermanent callback should have been called")
 	}
 	

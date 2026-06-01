@@ -1,12 +1,17 @@
+// Package worker provides a fixed-size worker pool for concurrent job
+// execution. Jobs are submitted via Submit() and processed by a configurable
+// number of goroutines. Integrates with the job package for retry/timeout
+// and with sctx via Component and HubComponent for lifecycle management.
 package worker
 
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/jackdes93/fcontext/sctx"
 	"github.com/jackdes93/fcontext/job"
+	"github.com/jackdes93/fcontext/sctx"
 )
 
 type MetricsHook interface {
@@ -36,14 +41,21 @@ type PoolStats struct {
 	QueueSize   int
 	Running     bool
 	Stopped     bool
+	// Runtime stats
+	QueueDepth     int64
+	ActiveWorkers  int64
+	TotalSubmitted int64
+	TotalProcessed int64
 }
 
 type Pool interface {
-	Submit(j job.Job) bool    // false nếu queue full hoặc pool chưa chạy
-	Run(ctx context.Context)  // blocking
-	Stop(ctx context.Context) // graceful stop
+	Submit(j job.Job) bool                                // false nếu queue full hoặc pool chưa chạy
+	SubmitFunc(fn job.Handler, opts ...job.Option) bool   // shortcut: tạo Job từ func và submit ngay
+	Run(ctx context.Context)                              // blocking
+	Stop(ctx context.Context)                             // graceful stop
 	IsRunning() bool
 	Stats() PoolStats
+	Ready() <-chan struct{} // closed when workers are started and ready to accept jobs
 }
 
 type pool struct {
@@ -51,12 +63,21 @@ type pool struct {
 	log    sctx.Logger
 	metric MetricsHook
 
-	queue   chan job.Job
-	wg      sync.WaitGroup
-	once    sync.Once
-	mu      sync.RWMutex
-	running bool
-	stopped bool
+	queue     chan job.Job
+	wg        sync.WaitGroup
+	once      sync.Once
+	mu        sync.RWMutex
+	running   bool
+	stopped   bool
+	// ready is closed by Run() after all workers are registered in wg.
+	// Only Run() may close this channel — Stop() uses a non-blocking read
+	// to detect whether Run() was ever called, avoiding the wg.Add vs
+	// wg.Wait data race.
+	ready chan struct{}
+
+	activeWorkers  atomic.Int64
+	totalSubmitted atomic.Int64
+	totalProcessed atomic.Int64
 }
 
 func NewPool(log sctx.Logger, metric MetricsHook, opts ...PoolOption) Pool {
@@ -74,6 +95,7 @@ func NewPool(log sctx.Logger, metric MetricsHook, opts ...PoolOption) Pool {
 		o(&p.cfg)
 	}
 	p.queue = make(chan job.Job, p.cfg.QueueSize)
+	p.ready = make(chan struct{})
 	return p
 }
 
@@ -88,21 +110,28 @@ func (p *pool) Submit(j job.Job) bool {
 	p.mu.RUnlock()
 
 	if stopped {
-		p.log.Warn("cannot submit job, pool is stopped")
+		p.log.Warn("cannot submit job: %v", ErrPoolStopped)
 		return false
 	}
 	if !running {
-		p.log.Warn("cannot submit job, pool is not running")
+		p.log.Warn("cannot submit job: %v", ErrPoolNotReady)
 		return false
 	}
 
 	select {
 	case p.queue <- j:
+		p.totalSubmitted.Add(1)
 		return true
 	default:
-		p.log.Warn("queue full, drop job")
+		p.log.Warn("job dropped: %v", ErrQueueFull)
 		return false
 	}
+}
+
+// SubmitFunc creates a Job from a handler function and submits it to the pool.
+// Returns false if the pool is stopped, not running, or the queue is full.
+func (p *pool) SubmitFunc(fn job.Handler, opts ...job.Option) bool {
+	return p.Submit(job.New(fn, opts...))
 }
 
 func (p *pool) Run(ctx context.Context) {
@@ -115,6 +144,9 @@ func (p *pool) Run(ctx context.Context) {
 			p.wg.Add(1)
 			go p.worker(ctx, i)
 		}
+		// Signal that all wg.Add calls are done. Only Run() closes this —
+		// Stop() never closes it, preventing the wg.Add vs wg.Wait race.
+		close(p.ready)
 	})
 	<-ctx.Done()
 	p.Stop(ctx)
@@ -133,17 +165,27 @@ func (p *pool) Stop(ctx context.Context) {
 	stopCtx, cancel := context.WithTimeout(context.Background(), p.cfg.StopTimeout)
 	defer cancel()
 
-	close(p.queue)
-	done := make(chan struct{})
-	go func() { p.wg.Wait(); close(done) }()
-
+	// Non-blocking check: if Run() closed ready, all wg.Add calls are done
+	// and wg.Wait() is safe. If ready is not closed, Run() never finished
+	// setup (or was never called) — wg count is 0, skip Wait entirely.
 	select {
-	case <-stopCtx.Done():
-		p.log.Warn("worker pool stop timeout reached")
-	case <-done:
-		p.log.Info("worker pool stopped")
+	case <-p.ready:
+		close(p.queue)
+		done := make(chan struct{})
+		go func() { p.wg.Wait(); close(done) }()
+		select {
+		case <-stopCtx.Done():
+			p.log.Warn("worker pool stop timeout reached")
+		case <-done:
+			p.log.Info("worker pool stopped")
+		}
+	default:
+		// Run() never completed — no workers to drain.
+		p.log.Info("worker pool stopped (workers never started)")
 	}
 }
+
+func (p *pool) Ready() <-chan struct{} { return p.ready }
 
 func (p *pool) IsRunning() bool {
 	p.mu.RLock()
@@ -153,13 +195,19 @@ func (p *pool) IsRunning() bool {
 
 func (p *pool) Stats() PoolStats {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	running := p.running
+	stopped := p.stopped
+	p.mu.RUnlock()
 	return PoolStats{
-		Name:        p.cfg.Name,
-		WorkerCount: p.cfg.Size,
-		QueueSize:   p.cfg.QueueSize,
-		Running:     p.running,
-		Stopped:     p.stopped,
+		Name:           p.cfg.Name,
+		WorkerCount:    p.cfg.Size,
+		QueueSize:      p.cfg.QueueSize,
+		Running:        running,
+		Stopped:        stopped,
+		QueueDepth:     int64(len(p.queue)),
+		ActiveWorkers:  p.activeWorkers.Load(),
+		TotalSubmitted: p.totalSubmitted.Load(),
+		TotalProcessed: p.totalProcessed.Load(),
 	}
 }
 
@@ -168,31 +216,31 @@ func (p *pool) worker(ctx context.Context, idx int) {
 	log := p.log.WithPrefix("worker")
 
 	for j := range p.queue {
+		name := j.Name()
 		start := time.Now()
+		p.activeWorkers.Add(1)
 		if p.metric != nil {
-			p.metric.IncJobStarted(nameOf(j))
+			p.metric.IncJobStarted(name)
 		}
 
 		err := j.RunWithRetry(ctx)
+		p.activeWorkers.Add(-1)
+		p.totalProcessed.Add(1)
 		lat := time.Since(start)
 
 		if err == nil {
-			log.Info("job success name=%s latency=%s", nameOf(j), lat)
+			log.Info("job success name=%s latency=%s", name, lat)
 			if p.metric != nil {
-				p.metric.IncJobSuccess(nameOf(j), lat)
+				p.metric.IncJobSuccess(name, lat)
 			}
 			continue
 		}
-		log.Warn("job failed name=%s state=%s retry=%d err=%v", nameOf(j), j.State(), j.RetryIndex(), err)
+		log.Warn("job failed name=%s state=%s retry=%d err=%v", name, j.State(), j.RetryIndex(), err)
 		if j.State() == job.StateRetryFailed && p.metric != nil {
-			p.metric.IncJobPermanentFailed(nameOf(j), err)
+			p.metric.IncJobPermanentFailed(name, err)
 		}
 		if p.metric != nil {
-			p.metric.IncJobFailed(nameOf(j), err, lat)
+			p.metric.IncJobFailed(name, err, lat)
 		}
 	}
-}
-
-func nameOf(j job.Job) string {
-	return "job"
 }

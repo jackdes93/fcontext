@@ -55,15 +55,15 @@ func (h *hub) Create(jobType string, handler JobHandler, opts ...Option) (Job, e
 	h.mu.RUnlock()
 	
 	if stopped {
-		return nil, fmt.Errorf("hub is stopped")
+		return nil, ErrHubStopped
 	}
-	
+
 	if handler == nil {
-		return nil, fmt.Errorf("job handler cannot be nil")
+		return nil, ErrHandlerNil
 	}
-	
+
 	if jobType == "" {
-		return nil, fmt.Errorf("job type cannot be empty")
+		return nil, ErrJobTypeEmpty
 	}
 	
 	cfg := Config{
@@ -126,14 +126,32 @@ type hubJobAdapter struct {
 	lastErr error
 }
 
+func (a *hubJobAdapter) Name() string {
+	if a.cfg.Name != "" {
+		return a.cfg.Name
+	}
+	return "unnamed"
+}
+
 func (a *hubJobAdapter) Execute(ctx context.Context) error {
-	a.setState(StateRunning)
+	a.mu.Lock()
+	if a.state == StateCompleted || a.state == StateRetryFailed {
+		s := a.state
+		a.mu.Unlock()
+		return fmt.Errorf("%w: %s", ErrInvalidState, s)
+	}
+	a.state = StateRunning
+	a.mu.Unlock()
 
 	ctx2 := ctx
 	var cancel context.CancelFunc
 	if a.cfg.MaxTimeout > 0 {
 		ctx2, cancel = context.WithTimeout(ctx, a.cfg.MaxTimeout)
-		defer cancel()
+		stopAfter := context.AfterFunc(ctx2, cancel)
+		defer func() {
+			stopAfter()
+			cancel()
+		}()
 	}
 
 	errCh := make(chan error, 1)
